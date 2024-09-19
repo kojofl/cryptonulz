@@ -3,8 +3,16 @@ macro_rules! impl_cryptoprovider {
         $(
         impl Cryptoprovider for $t {
             fn encrypt(&self, buffer: &mut Vec<u8>) {
-                let padding_len = BLOCKSIZE - (buffer.len() % BLOCKSIZE);
-                buffer.extend(std::iter::repeat(padding_len as u8).take(padding_len));
+                match self.padding {
+                    PaddingStrategy::PKCS7 => {
+                        let padding_len = BLOCKSIZE - (buffer.len() % BLOCKSIZE);
+                        buffer.extend(std::iter::repeat(padding_len as u8).take(padding_len));
+                    },
+                    PaddingStrategy::ZERO => {
+                        let padding_len = (buffer.len() % BLOCKSIZE);
+                        buffer.extend(std::iter::repeat(0u8).take(padding_len));
+                    }
+                }
                 debug_assert!(buffer.len() % BLOCKSIZE == 0);
                 for block in buffer.chunks_exact_mut(BLOCKSIZE) {
                     self.encrypt_block(
@@ -22,11 +30,19 @@ macro_rules! impl_cryptoprovider {
                         as &mut [u8; BLOCKSIZE],
                     );
                 }
-                // empty buffer
-                let Some(padding_len) = buffer.last() else {
-                    return;
-                };
-                buffer.truncate(buffer.len() - *padding_len as usize);
+                match self.padding {
+                    PaddingStrategy::PKCS7 => {
+                        // empty buffer
+                        let Some(padding_len) = buffer.last() else {
+                            return;
+                        };
+                        buffer.truncate(buffer.len() - *padding_len as usize);
+                    },
+                    PaddingStrategy::ZERO => {
+                        let padding_len = buffer.iter().rev().take_while(|b| **b == 0u8).count();
+                        buffer.extend(std::iter::repeat(0u8).take(padding_len));
+                    }
+                }
             }
 
             fn encrypt_block(&self, block: &mut [u8; BLOCKSIZE]) {

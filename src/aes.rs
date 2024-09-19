@@ -67,11 +67,6 @@ pub trait Cryptoprovider {
     fn decrypt_block(&self, buffer: &mut [u8; BLOCKSIZE]);
 }
 
-// Alg      kl bs  Nr
-// AES-128   4  4  10
-// AES-192   6  4  12
-// AES-256   8  4  14
-
 pub struct Aes128 {
     expanded_key: [u8; EXPANDED_KEYSIZE_AES128],
     padding: PaddingStrategy,
@@ -86,21 +81,31 @@ pub struct Aes256 {
 }
 
 #[derive(Default)]
-enum PaddingStrategy {
+pub enum PaddingStrategy {
     #[default]
     PKCS7,
+    ZERO,
 }
 
 impl Aes128 {
     const ROUNDS: usize = 10;
     const KEYSIZE: usize = 16;
     const NK: usize = Self::KEYSIZE / 4;
+
     pub fn new(key: &[u8; Aes128::KEYSIZE]) -> Self {
         Self {
             expanded_key: Self::key_expansion(key),
             padding: Default::default(),
         }
     }
+
+    pub fn with_padding(key: &[u8; Aes128::KEYSIZE], padding: PaddingStrategy) -> Self {
+        Self {
+            expanded_key: Self::key_expansion(key),
+            padding,
+        }
+    }
+
     fn key_expansion(key: &[u8; Aes128::KEYSIZE]) -> [u8; EXPANDED_KEYSIZE_AES128] {
         let mut expanded = [0; EXPANDED_KEYSIZE_AES128];
         expanded[..key.len()].copy_from_slice(key);
@@ -127,12 +132,21 @@ impl Aes192 {
     const ROUNDS: usize = 12;
     const KEYSIZE: usize = 24;
     const NK: usize = Self::KEYSIZE / 4;
+
     pub fn new(key: &[u8; Aes192::KEYSIZE]) -> Self {
         Self {
             expanded_key: Self::key_expansion(key),
             padding: Default::default(),
         }
     }
+
+    pub fn with_padding(key: &[u8; Aes192::KEYSIZE], padding: PaddingStrategy) -> Self {
+        Self {
+            expanded_key: Self::key_expansion(key),
+            padding,
+        }
+    }
+
     fn key_expansion(key: &[u8; Aes192::KEYSIZE]) -> [u8; EXPANDED_KEYSIZE_AES192] {
         let mut expanded = [0; EXPANDED_KEYSIZE_AES192];
         expanded[..key.len()].copy_from_slice(key);
@@ -159,10 +173,18 @@ impl Aes256 {
     const ROUNDS: usize = 14;
     const KEYSIZE: usize = 32;
     const NK: usize = Self::KEYSIZE / 4;
+
     pub fn new(key: &[u8; Aes256::KEYSIZE]) -> Self {
         Self {
             expanded_key: Self::key_expansion(key),
             padding: Default::default(),
+        }
+    }
+
+    pub fn with_padding(key: &[u8; Aes256::KEYSIZE], padding: PaddingStrategy) -> Self {
+        Self {
+            expanded_key: Self::key_expansion(key),
+            padding,
         }
     }
 
@@ -292,7 +314,7 @@ fn mix_collumns(state: &mut Matrix) {
     let mut new_col = [0; 4];
     for i in 0..4 {
         let col = state.get_mut_column(i);
-        for j in 0..4 {
+        for (j, e) in new_col.iter_mut().enumerate() {
             let mix_row = MIXMATRIX.get_row(j);
             let mut new_val = match mix_row[0] {
                 1 => col[0],
@@ -312,9 +334,9 @@ fn mix_collumns(state: &mut Matrix) {
                     }
                 };
             }
-            new_col[j] = new_val;
+            *e = new_val;
         }
-        for (old, new) in col.into_iter().zip(new_col.into_iter()) {
+        for (old, new) in col.iter_mut().zip(new_col.into_iter()) {
             *old = new;
         }
     }
@@ -325,7 +347,7 @@ fn inv_mix_collumns(state: &mut Matrix) {
     let mut new_col = [0; 4];
     for i in 0..4 {
         let col = state.get_mut_column(i);
-        for j in 0..4 {
+        for (j, e) in new_col.iter_mut().enumerate() {
             let mix_row = INVMIXMATRIX.get_row(j);
             let mut new_val = match mix_row[0] {
                 9 => mul_9(col[0]),
@@ -347,9 +369,9 @@ fn inv_mix_collumns(state: &mut Matrix) {
                     }
                 };
             }
-            new_col[j] = new_val;
+            *e = new_val;
         }
-        for (old, new) in col.into_iter().zip(new_col.into_iter()) {
+        for (old, new) in col.iter_mut().zip(new_col.into_iter()) {
             *old = new;
         }
     }
@@ -370,7 +392,7 @@ fn mul_3(val: u8) -> u8 {
 #[inline(always)]
 #[doc(hidden)]
 fn mul_9(val: u8) -> u8 {
-    return dbl(dbl(dbl(val))) ^ val;
+    dbl(dbl(dbl(val))) ^ val
 }
 
 #[inline(always)]
@@ -379,7 +401,7 @@ fn mul_11(val: u8) -> u8 {
     let a2 = dbl(val);
     let a4 = dbl(a2);
     let a8 = dbl(a4);
-    return a8 ^ a2 ^ val;
+    a8 ^ a2 ^ val
 }
 
 #[inline(always)]
@@ -388,7 +410,7 @@ fn mul_13(val: u8) -> u8 {
     let a2 = dbl(val);
     let a4 = dbl(a2);
     let a8 = dbl(a4);
-    return a8 ^ a4 ^ val;
+    a8 ^ a4 ^ val
 }
 
 #[inline(always)]
@@ -397,7 +419,7 @@ fn mul_14(val: u8) -> u8 {
     let a2 = dbl(val);
     let a4 = dbl(a2);
     let a8 = dbl(a4);
-    return a8 ^ a4 ^ a2;
+    a8 ^ a4 ^ a2
 }
 
 #[inline(always)]
@@ -458,7 +480,7 @@ fn add_round_key(state: &mut Matrix, key: &[u8]) {
     assert_eq!(key.len(), 16);
     for i in 0..4 {
         let col = state.get_mut_column(i);
-        for (j, el) in col.into_iter().enumerate() {
+        for (j, el) in col.iter_mut().enumerate() {
             *el ^= key[WORDSIZE * i + j];
         }
     }
