@@ -113,7 +113,7 @@ impl Aes128 {
         for i in Self::NK..WORDSIZE * 11 {
             let (a, b) = expanded.split_at_mut(i * WORDSIZE);
             let (a, t) = a.split_at((i - 1) * WORDSIZE);
-            temp.copy_from_slice(&t);
+            temp.copy_from_slice(t);
             if i % 4 == 0 {
                 rot_word(&mut temp[..]);
                 sub_word(&mut temp[..]);
@@ -151,10 +151,11 @@ impl Aes192 {
     fn key_expansion(key: &[u8; Aes192::KEYSIZE]) -> [u8; EXPANDED_KEYSIZE_AES192] {
         let mut expanded = [0; EXPANDED_KEYSIZE_AES192];
         expanded[..key.len()].copy_from_slice(key);
+        let mut temp = [0; WORDSIZE];
         for i in Self::NK..WORDSIZE * 13 {
             let (a, b) = expanded.split_at_mut(i * WORDSIZE);
-            let (a, temp) = a.split_at_mut((i - 1) * WORDSIZE);
-            let mut temp = temp.to_vec();
+            let (a, t) = a.split_at((i - 1) * WORDSIZE);
+            temp.copy_from_slice(t);
             if i % Self::NK == 0 {
                 rot_word(&mut temp[..]);
                 sub_word(&mut temp[..]);
@@ -192,10 +193,11 @@ impl Aes256 {
     fn key_expansion(key: &[u8; Aes256::KEYSIZE]) -> [u8; EXPANDED_KEYSIZE_AES256] {
         let mut expanded = [0; EXPANDED_KEYSIZE_AES256];
         expanded[..key.len()].copy_from_slice(key);
+        let mut temp = [0; WORDSIZE];
         for i in Self::NK..WORDSIZE * 15 {
             let (a, b) = expanded.split_at_mut(i * WORDSIZE);
-            let (a, temp) = a.split_at_mut((i - 1) * WORDSIZE);
-            let mut temp = temp.to_vec();
+            let (a, t) = a.split_at_mut((i - 1) * WORDSIZE);
+            temp.copy_from_slice(t);
             if i % Self::NK == 0 {
                 rot_word(&mut temp[..]);
                 sub_word(&mut temp[..]);
